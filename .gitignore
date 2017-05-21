@@ -53,3 +53,4 @@ build-iPhoneSimulator/
 # Artefacts generated during a processing run.
 *.txt
 *.json
+cache
