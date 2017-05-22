@@ -1,13 +1,62 @@
 """A console interface to the Ubuntu IRC logs using an Algolia backend.
-Shamelessly lifted from:
+Urwid framework shamelessly lifted from:
 https://github.com/izderadicka/xmpp-tester/blob/master/commander.py"""
 # pylint: disable=too-many-instance-attributes, too-few-public-methods, invalid-name, too-many-arguments
+
 
 from collections import deque
 from threading import Thread
 import threading
 import urwid
+from algoliasearch import algoliasearch
 
+
+class Algolia(object):
+    """Handles the Algolia stuff."""
+
+    def __init__(self):
+        self.app_id = 'PBF4ZR3KBT'
+        self.api_key = '9188cd13a0dbf3d0af949802b0e31489' # search-only
+        self.index = 'ubuntu_irc_logs'
+
+        # Restricted search (for acquiring metadata).
+        self.restricted_search = {
+            'page': 1,
+            'hitsPerPage': 1,
+            'length': 1
+        }
+
+        # General search.
+        self.general_search = {
+            'highlightPreTag': '',
+            'highlightPostTag': '',
+            'hitsPerPage': 100
+        }
+
+        # Keep it simple.
+        self.client = algoliasearch.Client(self.app_id, self.api_key)
+        self.index = self.client.init_index(self.index)
+
+    def get_channels(self):
+        """Get a list of indexed channels."""
+
+        criteria = {'facets': 'channel'}
+        results = self.index.search(
+            '',
+            dict(self.restricted_search, **criteria)
+        )
+
+        return results['facets']['channel'].keys()
+
+    def do_a_search(self, query, criteria):
+        """Execute a search based on some (optional) criteria."""
+
+        results = self.index.search(
+            query,
+            dict(self.general_search, **criteria)
+        )
+
+        return results
 
 class UnknownCommand(Exception):
     """Generic unknown command handler."""
@@ -21,9 +70,9 @@ class Interaction(object):
     def __init__(self):
         """Set up basic help and quit capabilites."""
 
-        # Just like IRC. :)
-        self._quit_cmd = ['/quit', '/q']
-        self._help_cmd = ['/help', '/?']
+        # Just like IRC except without a prefix slash. :P
+        self._quit_cmd = ['quit', 'q']
+        self._help_cmd = ['help', '?']
 
     def __call__(self, line):
         tokens = line.split()
@@ -245,14 +294,31 @@ class Terminal(urwid.Frame):
 if __name__ == '__main__':
     # Init with a quick sanity check.
 
-    class TestCmd(Interaction):
-        """quickie."""
+    class Ubunolia(Interaction):
+        """Extend the Interaction class."""
+
+        def do_connect(self, *args):
+            """Connect to the pretend server."""
+
+            # This really just sets up the Aloglia object.
+            self.algolia = Algolia() # pylint: disable=attribute-defined-outside-init
+
+            return 'Connected to irc.ubuntu.com'
 
         def do_echo(self, *args):
             """echoooooo"""
 
-            '''echo something'''
             return ' '.join(args)
+
+        def do_list(self, *args):
+            """List the channels."""
+
+            channels = self.algolia.get_channels()
+            obj = ''
+            for channel in channels:
+                obj = obj + channel + '\n'
+
+            return obj
 
         def do_raise(self, *args):
             """Lift it up yo."""
@@ -260,7 +326,7 @@ if __name__ == '__main__':
             raise Exception('OH NOES!')
 
     caption = 'Tab to switch focus to upper frame'
-    terminal = Terminal(title='Ubunolia', cap=caption, cmd=TestCmd())
+    terminal = Terminal(title='Ubunolia', cap=caption, cmd=Ubunolia())
 
     # Test async
     import time
