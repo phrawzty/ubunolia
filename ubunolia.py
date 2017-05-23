@@ -30,7 +30,7 @@ class Algolia(object):
         self.general_search = {
             'highlightPreTag': '',
             'highlightPostTag': '',
-            'hitsPerPage': 100
+            'hitsPerPage': 1000
         }
 
         # Keep it simple.
@@ -49,7 +49,7 @@ class Algolia(object):
         return results['facets']['channel'].keys()
 
     def do_a_search(self, query, criteria):
-        """Execute a search based on some (optional) criteria."""
+        """Execute a generic search based on some criteria."""
 
         results = self.index.search(
             query,
@@ -57,6 +57,65 @@ class Algolia(object):
         )
 
         return results
+
+    def get_irc_logs(self, timestamp, channel):
+        """Search for IRC logs given a datestamp and criteria."""
+
+        # Because we're only interested in exact timestamp hits, we need the
+        # ranking info in order to filter out inexact results.
+        criteria = {
+            'facetFilters': ['channel:' + channel],
+            'getRankingInfo': 1
+        }
+        results = self.index.search(
+            timestamp,
+            dict(self.general_search, **criteria)
+        )
+
+        returnable = []
+        for hit in results['hits']:
+            if hit['_rankingInfo']['proximityDistance'] <= 3:
+                returnable.append('[' + hit['datestamp'] + '] ' + \
+                    hit['username'] + ': ' + hit['message'])
+
+        return returnable
+
+    def get_most_recent_user_stamp(self, username):
+        """Get the timestamp of the most recent log line for a user."""
+
+        criteria = {
+            'facetFilters': ['username:' + username],
+            'getRankingInfo': 1
+        }
+        results = self.index.search(
+            '',
+            dict(self.general_search, **criteria)
+        )
+
+        # The datestamp field is ordered ascending, but we want the last one,
+        # so we have to get the entire result list then pick the final item.
+        returnable = results['hits'][(results['nbHits'] - 1)]['datestamp']
+
+        return returnable
+
+    def get_userinfo(self, username):
+        """Get information about a user."""
+
+        criteria = {
+            'getRankingInfo': 1,
+            'facets': '*',
+        }
+        results = self.index.search(
+            username,
+            dict(self.restricted_search, **criteria)
+        )
+
+        returnable = {}
+        returnable['channels'] = results['facets']['channel'].keys()
+        returnable['messages'] = results['nbHits']
+        returnable['firstseen'] = results['hits'][0]['datestamp']
+
+        return returnable
 
 class UnknownCommand(Exception):
     """Generic unknown command handler."""
@@ -297,20 +356,40 @@ if __name__ == '__main__':
     class Ubunolia(Interaction):
         """Extend the Interaction class."""
 
-        def do_connect(self, *args):
+        def do_connect(self):
             """Connect to the pretend server."""
 
-            # This really just sets up the Aloglia object.
+            # Instantiante the Aloglia object. Come at me, Pythonistas.
             self.algolia = Algolia() # pylint: disable=attribute-defined-outside-init
 
-            return 'Connected to irc.ubuntu.com'
+            # Start querying and dumping logs.
+            import time
+            def run():
+                """This is the thread that injects IRC logs into the window."""
 
-        def do_echo(self, *args):
-            """echoooooo"""
+                while True:
+                    # Ideally we could set which day we wanted to replay. :P
+                    day = '2017-05-16T'
+                    hhmm = time.strftime('%H:%M')
+                    datestamp = day + hhmm
 
-            return ' '.join(args)
+                    # Ideally we would be able to switch channels. :P
+                    logs = self.algolia.get_irc_logs(datestamp, 'ubuntu')
+                    for line in logs:
+                        terminal.output(line)
+                        # Simulate a running conversation by breaking up each
+                        # minute-block by the number of log lines from that
+                        # minute. HAHA "simulate"
+                        #terminal.output('sleeping ' + str(60/len(logs)) + ' seconds.')
+                        time.sleep(60 / len(logs))
 
-        def do_list(self, *args):
+            thread = Thread(target=run)
+            thread.daemon = True
+            thread.start()
+
+            return 'Connected to irc://irc.ubuntu.com/#ubuntu'
+
+        def do_list(self):
             """List the channels."""
 
             channels = self.algolia.get_channels()
@@ -320,24 +399,29 @@ if __name__ == '__main__':
 
             return obj
 
-        def do_raise(self, *args):
-            """Lift it up yo."""
+        def do_whois(self, username):
+            """Get info about a username."""
 
-            raise Exception('OH NOES!')
+            whois = self.algolia.get_userinfo(username)
 
-    caption = 'Tab to switch focus to upper frame'
+            obj = username + ' was first seen on ' + whois['firstseen'] + \
+                '. Since then they have sent ' + str(whois['messages']) + \
+                ' in the following channels: '
+
+            for channel in whois['channels']:
+                obj = obj + channel + ' '
+
+            return obj
+
+        def do_seen(self, username):
+            """Do a "last seen" on a username."""
+
+            obj = self.algolia.get_most_recent_user_stamp(username)
+
+            return obj
+
+    caption = 'Tab to switch focus to upper frame.'
     terminal = Terminal(title='Ubunolia', cap=caption, cmd=Ubunolia())
-
-    # Test async
-    import time
-    def run():
-        while True:
-            time.sleep(1)
-            terminal.output('Tick')
-
-    thread = Thread(target=run)
-    thread.daemon = True
-    thread.start()
 
     # Ok go forilla.
     terminal.loop()
