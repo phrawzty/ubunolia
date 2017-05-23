@@ -393,9 +393,9 @@ if __name__ == '__main__':
             """List the channels."""
 
             channels = self.algolia.get_channels()
-            obj = ''
+            obj = 'Channel list:\n'
             for channel in channels:
-                obj = obj + channel + '\n'
+                obj = obj + '#' + channel + '\n'
 
             return obj
 
@@ -416,7 +416,9 @@ if __name__ == '__main__':
         def do_seen(self, username):
             """Do a "last seen" on a username."""
 
-            obj = self.algolia.get_most_recent_user_stamp(username)
+            lastseen = self.algolia.get_most_recent_user_stamp(username)
+
+            obj = username + ' was last seen on: ' + lastseen
 
             return obj
 
