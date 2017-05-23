@@ -19,7 +19,7 @@ Available commands: connect list seen whois
 ```
 
 Type `connect` to begin the simulation. This will start querying the Algolia
-backend and replaying the IRC logs as it it were today.
+backend and replaying the IRC logs as if it were today.
 
 ## What even is time?
 
