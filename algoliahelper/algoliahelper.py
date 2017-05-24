@@ -1,3 +1,4 @@
+"""Algolia is a funny word."""
 from algoliasearch import algoliasearch
 
 class AlgoliaHelper(object):
@@ -64,8 +65,8 @@ class AlgoliaHelper(object):
         returnable = []
         for hit in results['hits']:
             if hit['_rankingInfo']['proximityDistance'] <= 3:
-                returnable.append('[' + hit['datestamp'] + '] ' + \
-                    hit['username'] + ': ' + hit['message'])
+                returnable.append('[' + hit['datestamp'] + '] <' + \
+                    hit['username'] + '> ' + hit['message'])
 
         return returnable
 
